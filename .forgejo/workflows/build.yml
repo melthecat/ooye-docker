@@ -19,7 +19,7 @@ jobs:
       COMMIT_MESSAGE: "Update build metadata"
       GET_NEWEST_VERSION_CMD: "curl -s https://gitdab.com/api/v1/repos/cadence/out-of-your-element/releases?limit=1 | \
           jq -r .[0].tag_name"
-      GIT_REPO_URL: "https://git.shork.ch/git-mirrors/out-of-your-element"
+      GIT_REPO_URL: "https://git.shork.ch/mirrors/out-of-your-element"
       REBUILD_ALL_X_DAYS: 14
 
     steps:
