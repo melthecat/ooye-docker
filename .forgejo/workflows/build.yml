@@ -1,4 +1,4 @@
-name: Auto Build Docker Container From Alpine PKG
+name: Build OCI image from source
 enable-email-notifications: true
 
 on:
