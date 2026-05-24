@@ -1,95 +1,62 @@
-name: Build OCI image from source
-enable-email-notifications: true
+name: Auto build OOYE OCI image
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '12 */3 * * *'
+    - cron: '12 */6 * * *'
 
 jobs:
-  build:
-    runs-on: dind
-
-    env:
-      PACKAGE: out-of-your-element
-      DOCKER_REGISTRY: git.shork.ch
-      REGISTRY_USER: docker-images
-      COMMIT_AUTHOR_NAME: "forgejo-runner"
-      COMMIT_AUTHOR_EMAIL: "forgejo-runner@shork.ch"
-      COMMIT_MESSAGE: "Update build metadata"
-      GET_NEWEST_VERSION_CMD: "curl -s https://gitdab.com/api/v1/repos/cadence/out-of-your-element/releases?limit=1 | \
-          jq -r .[0].tag_name"
-      GIT_REPO_URL: "https://git.shork.ch/mirrors/out-of-your-element"
-      REBUILD_ALL_X_DAYS: 14
-
+  get_package_version:
+    runs-on: alpine-tools
+    outputs:
+      newest_version: ${{ steps.get_newest_version.outputs.newest_version }}
     steps:
-      - name: Install dependencies
-        shell: sh
+      - id: get_newest_version
+        name: Get newest version
         run: |
-          echo "Run because of ${{ github.event_name }}"
-          apk add --no-cache git nodejs npm bash sed curl jq yq
+          newest_version=$(curl -fsSL https://gitdab.com/api/v1/repos/cadence/out-of-your-element/releases?limit=1 | \
+          jq -r .[0].tag_name)
+          echo "newest_version=$newest_version" >> $FORGEJO_OUTPUT
 
-      - uses: actions/checkout@v3
+  check_if_build_required:
+    needs: get_package_version
+    runs-on: alpine-tools
+    uses: oci-images/workflow-callees/.forgejo/workflows/oci/check-if-required/v1.yaml@main
+    with:
+      oci_image_name: git.shork.ch/oci-images/out-of-your-element
+      rebuild_every_x_days: 7
+      newest_version: ${{ needs.get_package_version.outputs.newest_version }}
 
-      - name: Get latest package version
-        id: check
-        run: |
-          newest_version=$(eval "$GET_NEWEST_VERSION_CMD")
-          echo "NEWEST_VERSION=$newest_version" >> $GITHUB_ENV
+  build_and_push:
+    needs:
+      - get_package_version
+      - check_if_build_required
+    runs-on: pinp
+    if: needs.check_if_build_required.outputs.rebuild == 'true'
+    uses: oci-images/workflow-callees/.forgejo/workflows/oci/build/v1.yaml@main
+    with:
+      name: git.shork.ch/oci-images/out-of-your-element
+      tag: ${{ needs.get_package_version.outputs.newest_version }}
+      islatest: true
+      git_repo: https://git.shork.ch/mirrors/out-of-your-element
+      containerfile_content: |
+        FROM node:alpine as builder
+        
+        ENV NODE_ENV=production
+        WORKDIR /usr/src/app
+        COPY --chown=node:node . .
+        RUN apk add --no-cache python3 make build-base \
+          && npm install .
+        
+        FROM node:alpine as runner
+        WORKDIR /usr/src/app
+        COPY --from=builder /usr/src/app/node_modules ./node_modules
+        COPY --chown=node:node --from=builder /usr/src/app .
+         
+        RUN chown node:node /usr/src/app
+        
+        USER node
+        CMD ["npm", "run", "start"]
 
-      - name: Determine if update is needed
-        run: |
-          last_version_file=".last_version"
-          last_rebuild_file=".last_rebuild"
-          last_dockerfile_hash_file=".dockerfile_hash"
-
-          last_version=$(cat $last_version_file 2>/dev/null || echo "none")
-          last_rebuild=$(cat $last_rebuild_file 2>/dev/null || echo 0)
-          last_dockerfile_hash=$(cat $last_dockerfile_hash_file 2>/dev/null || echo "none")
-          dockerfile_hash=$(sha256sum Dockerfile | awk '{print $1}' || echo "nuh")
-          current_day=$(( $(date +%s) / 86400 ))
-
-          update="false"
-          if [ ${{ github.event_name }} == "workflow_dispatch" ] || [ "$last_version" != "$NEWEST_VERSION" ] || [ "$last_dockerfile_hash" != "$dockerfile_hash" ] || [ $((current_day - last_rebuild)) -gt "$REBUILD_ALL_X_DAYS" ]; then
-            update="true"
-          fi
-
-          echo "UPDATE=$update" >> $GITHUB_ENV
-          echo "DOCKERFILE_HASH=$dockerfile_hash" >> $GITHUB_ENV
-
-      - name: Start Docker daemon
-        if: env.UPDATE == 'true'
-        run: |
-          dockerd-entrypoint.sh &
-          for i in {1..10}; do
-            docker info && break
-            echo "Waiting for Docker daemon..."
-            sleep 3
-          done
-          docker info || { echo "Docker daemon failed to start."; exit 1; }
-
-      - name: Build and push Docker image
-        if: env.UPDATE == 'true'
-        run: |
-          git clone $GIT_REPO_URL ../$PACKAGE-build
-          cp Dockerfile ../$PACKAGE-build
-          cd ../$PACKAGE-build
-          git fetch --all --tags
-          git checkout tags/$NEWEST_VERSION        
-          docker build -t $DOCKER_REGISTRY/$REGISTRY_USER/$PACKAGE:latest -t $DOCKER_REGISTRY/$REGISTRY_USER/$PACKAGE:$NEWEST_VERSION .
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login $DOCKER_REGISTRY -u $REGISTRY_USER --password-stdin
-          docker push --all-tags $DOCKER_REGISTRY/$REGISTRY_USER/$PACKAGE
-
-      - name: Commit updated metadata
-        if: env.UPDATE == 'true'
-        run: |
-          echo "$NEWEST_VERSION" > .last_version
-          echo $(( $(date +%s) / 86400 )) > .last_rebuild
-          echo "$DOCKERFILE_HASH" > .dockerfile_hash
-          git config user.name "$COMMIT_AUTHOR_NAME"
-          git config user.email "$COMMIT_AUTHOR_EMAIL"
-          git add .last_version .last_rebuild .dockerfile_hash
-          git commit -m "$COMMIT_MESSAGE" || echo "No commit"
-          git push
-
+    secrets: inherit
 
