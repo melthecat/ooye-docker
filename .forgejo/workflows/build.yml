@@ -14,8 +14,8 @@ jobs:
       - id: get_newest_version
         name: Get newest version
         run: |
-          newest_version=$(curl -fsSL https://gitdab.com/api/v1/repos/cadence/out-of-your-element/releases?limit=1 | \
-          jq -r .[0].tag_name)
+          newest_version=$(curl -fsSL https://git.shork.ch/api/v1/repos/mirrors/out-of-your-element/tags?limit=1 | \
+          jq -r .[0].name)
           echo "newest_version=$newest_version" >> $FORGEJO_OUTPUT
 
   check_if_build_required:
