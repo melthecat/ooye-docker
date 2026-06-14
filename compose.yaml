@@ -1,9 +1,10 @@
 services:
   ooye:
     image: git.shork.ch/docker-images/out-of-your-element:latest
+    environment:
+      OOYE_DATADIR: /data
     volumes:
       - ./registration.yaml:/usr/src/app/registration.yaml
-      - ./ooye.db:/usr/src/app/ooye.db
+      - ./ooye-data:/data
     ports:
       - 127.0.0.1:6693:6693
-    #command: sleep 1800 # For setup
