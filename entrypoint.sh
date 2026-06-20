@@ -10,8 +10,8 @@ if [ "$OOYE_WAL" = "true" ] && [ "$OOYE_DATADIR" = "/usr/src/app" ]; then
 fi
 
 if [ "$OOYE_DATADIR" != "/usr/src/app" ]; then
-    ln -s "$OOYE_DATADIR/ooye.db" "/usr/src/app/ooye.db"
-    ln -s "$OOYE_DATADIR/registration.yaml" "/usr/src/app/registration.yaml"
+    ln -sf "$OOYE_DATADIR/ooye.db" "/usr/src/app/ooye.db"
+    ln -sf "$OOYE_DATADIR/registration.yaml" "/usr/src/app/registration.yaml"
     echo "Database symlink to $OOYE_DATADIR/ooye.db created!"
 else 
     echo "Not setting OOYE_DATADIR is deprecated and might be removed in the future."
@@ -33,8 +33,8 @@ const db = new sqlite("/usr/src/app/ooye.db", {fileMustExist: true})
 db.pragma("journal_mode = wal")
 db.close()
 EOF
-    ln -s "$OOYE_DATADIR/ooye.db-wal" "/usr/src/app/ooye.db-wal"
-    ln -s "$OOYE_DATADIR/ooye.db-shm" "/usr/src/app/ooye.db-shm"
+    ln -sf "$OOYE_DATADIR/ooye.db-wal" "/usr/src/app/ooye.db-wal"
+    ln -sf "$OOYE_DATADIR/ooye.db-shm" "/usr/src/app/ooye.db-shm"
     echo "WAL mode enabled!"
 else 
     node << EOF
